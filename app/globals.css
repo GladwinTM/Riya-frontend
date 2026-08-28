@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+:root {
+  --riya-red: #e30613;
+  --sunflower: #f4c542;
+  --cream: #f7f2df;
+  --soft: #faf9f5;
+  --ink: #171717;
+  --background: var(--soft);
+  --foreground: var(--ink);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-riya: var(--riya-red);
+  --color-sunflower: var(--sunflower);
+  --color-cream: var(--cream);
+  --font-sans: var(--font-outfit);
+  --font-display: var(--font-fraunces);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+::selection {
+  background: #f4c542;
+  color: #171717;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--riya-red);
+  outline-offset: 2px;
+}
+
+@keyframes float-soft {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-10px) rotate(6deg);
+  }
+}
+
+.float-soft {
+  animation: float-soft 6s ease-in-out infinite;
+}
