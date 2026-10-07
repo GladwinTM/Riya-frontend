@@ -1,4 +1,9 @@
-import { API_URL, ACCESS_TOKEN_KEY } from "@/lib/constants";
+import {
+  ACCESS_TOKEN_KEY,
+  API_RETRY_COUNT,
+  API_TIMEOUT_MS,
+  API_URL,
+} from "@/lib/constants";
 import type { ApiFailure, ApiSuccess } from "@/types/api";
 
 export class ApiError extends Error {
@@ -17,7 +22,27 @@ function token() {
   return window.localStorage.getItem(ACCESS_TOKEN_KEY);
 }
 
-export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+function isAbortError(error: unknown) {
+  return (
+    (error instanceof Error && error.name === "AbortError") ||
+    (typeof DOMException !== "undefined" &&
+      error instanceof DOMException &&
+      error.name === "AbortError")
+  );
+}
+
+function isRetryable(error: unknown) {
+  if (error instanceof ApiError) {
+    return error.status === 0 || error.status === 408 || error.status >= 500;
+  }
+  return true;
+}
+
+async function sleep(ms: number) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchOnce<T>(path: string, init: RequestInit): Promise<T> {
   const headers = new Headers(init.headers);
   if (!headers.has("Content-Type") && init.body) {
     headers.set("Content-Type", "application/json");
@@ -25,24 +50,98 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const bearer = token();
   if (bearer) headers.set("Authorization", `Bearer ${bearer}`);
 
-  const res = await fetch(`${API_URL}${path}`, {
-    ...init,
-    headers,
-    cache: "no-store",
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
 
-  const json = (await res.json().catch(() => null)) as
-    | ApiSuccess<T>
-    | ApiFailure
-    | null;
-
-  if (!json || json.success !== true) {
-    throw new ApiError(
-      json?.message ?? "Request failed",
-      res.status,
-      json && "code" in json ? json.code : undefined,
-    );
+  const external = init.signal;
+  if (external) {
+    if (external.aborted) controller.abort();
+    else {
+      external.addEventListener("abort", () => controller.abort(), {
+        once: true,
+      });
+    }
   }
 
-  return json.data;
+  try {
+    const res = await fetch(`${API_URL}${path}`, {
+      ...init,
+      headers,
+      cache: "no-store",
+      signal: controller.signal,
+    });
+
+    const json = (await res.json().catch(() => null)) as
+      | ApiSuccess<T>
+      | ApiFailure
+      | null;
+
+    if (!json || json.success !== true) {
+      throw new ApiError(
+        json?.message ??
+          (res.status === 504
+            ? "The store is taking too long to respond. Please try again."
+            : "Request failed"),
+        res.status,
+        json && "code" in json ? json.code : undefined,
+      );
+    }
+
+    return json.data;
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    if (isAbortError(error)) {
+      throw new ApiError(
+        "The store is taking too long to respond. Please try again.",
+        408,
+        "TIMEOUT",
+      );
+    }
+    throw new ApiError(
+      "Could not reach the store. Check that the backend is running.",
+      0,
+      "NETWORK_ERROR",
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const method = (init.method ?? "GET").toUpperCase();
+  const retries = method === "GET" ? API_RETRY_COUNT : 0;
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      return await fetchOnce<T>(path, init);
+    } catch (error) {
+      lastError = error;
+      if (attempt >= retries || !isRetryable(error)) break;
+      await sleep(400 * (attempt + 1));
+    }
+  }
+
+  throw lastError;
+}
+
+/** Soft-fail helper for pages that should still render when the API is down. */
+export async function apiSafe<T>(
+  path: string,
+  fallback: T,
+  init?: RequestInit,
+): Promise<{ data: T; ok: boolean; error: string | null }> {
+  try {
+    const data = await api<T>(path, init);
+    return { data, ok: true, error: null };
+  } catch (error) {
+    return {
+      data: fallback,
+      ok: false,
+      error:
+        error instanceof ApiError
+          ? error.message
+          : "Something went wrong while loading.",
+    };
+  }
 }

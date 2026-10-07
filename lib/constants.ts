@@ -6,6 +6,16 @@ export const GUEST_ORDERS_KEY = "riya-guest-orders";
 export const ACCESS_TOKEN_KEY = "riya-access-token";
 
 export const SEARCH_DEBOUNCE_MS = 350;
+export const API_TIMEOUT_MS = 8_000;
+export const API_RETRY_COUNT = 2;
+
+export const LOADING_MESSAGES = [
+  "Loading the page…",
+  "Almost there…",
+  "Warming things up…",
+  "Just a moment…",
+  "Getting your oils ready…",
+] as const;
 
 export const NAV_LINKS = [
   { href: "/shop", label: "Shop" },

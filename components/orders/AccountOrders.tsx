@@ -8,37 +8,61 @@ import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { formatInr } from "@/lib/utils";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
+
+function subscribe() {
+  return () => {};
+}
+
+function readToken() {
+  return window.localStorage.getItem(ACCESS_TOKEN_KEY) ?? "";
+}
+
+function readGuest() {
+  return listGuestOrders();
+}
 
 export function AccountOrders() {
-  const [token, setToken] = useState("");
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [guest, setGuest] = useState<Order[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const storedToken = useSyncExternalStore(subscribe, readToken, () => "");
+  const guest = useSyncExternalStore(subscribe, readGuest, () => []);
 
-  useEffect(() => {
-    setToken(window.localStorage.getItem(ACCESS_TOKEN_KEY) ?? "");
-    setGuest(listGuestOrders());
-  }, []);
+  return <AccountOrdersForm key={storedToken} initialToken={storedToken} guest={guest} />;
+}
+
+function AccountOrdersForm({
+  initialToken,
+  guest,
+}: {
+  initialToken: string;
+  guest: Order[];
+}) {
+  const [token, setToken] = useState(initialToken);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
   async function loadAccountOrders(value: string) {
-    if (!value) {
+    if (!value.trim()) {
+      window.localStorage.removeItem(ACCESS_TOKEN_KEY);
       setOrders([]);
+      setError(null);
       return;
     }
+    setLoading(true);
     try {
+      window.localStorage.setItem(ACCESS_TOKEN_KEY, value.trim());
       setError(null);
       const data = await getOrders();
       setOrders(data);
     } catch {
-      setError("Could not load account orders. Check the access token.");
+      setError(
+        "Could not load account orders. The backend may be slow, or the token is wrong.",
+      );
       setOrders([]);
+    } finally {
+      setLoading(false);
     }
   }
-
-  useEffect(() => {
-    if (token) void loadAccountOrders(token);
-  }, [token]);
 
   return (
     <div className="space-y-8">
@@ -46,8 +70,7 @@ export function AccountOrders() {
         className="rounded-2xl bg-white p-5"
         onSubmit={(e) => {
           e.preventDefault();
-          window.localStorage.setItem(ACCESS_TOKEN_KEY, token.trim());
-          void loadAccountOrders(token.trim());
+          void loadAccountOrders(token);
         }}
       >
         <Label htmlFor="token">Customer access token (optional, local demo)</Label>
@@ -61,8 +84,8 @@ export function AccountOrders() {
           Guest checkout does not need this. Local seeded customer:
           22222222-2222-2222-2222-222222222222
         </p>
-        <Button type="submit" className="mt-4">
-          Save token
+        <Button type="submit" className="mt-4" disabled={loading}>
+          {loading ? "Loading orders…" : "Save token & load orders"}
         </Button>
         {error ? <p className="mt-2 text-sm text-riya">{error}</p> : null}
       </form>
@@ -70,7 +93,9 @@ export function AccountOrders() {
       <section>
         <h2 className="mb-3 font-medium">Account orders</h2>
         {!orders.length ? (
-          <p className="text-sm text-zinc-600">No account orders loaded.</p>
+          <p className="text-sm text-zinc-600">
+            No account orders loaded yet. Save a token above to fetch them.
+          </p>
         ) : (
           <ul className="space-y-3">
             {orders.map((order) => (
@@ -93,7 +118,10 @@ export function AccountOrders() {
           <ul className="space-y-3">
             {guest.map((order) => (
               <li key={order.id} className="rounded-xl bg-white p-4">
-                <Link href={`/order/${order.order_number}`} className="font-medium underline">
+                <Link
+                  href={`/order/${order.order_number}`}
+                  className="font-medium underline"
+                >
                   {order.order_number}
                 </Link>
                 <p className="text-sm text-zinc-600">

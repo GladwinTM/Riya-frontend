@@ -3,7 +3,8 @@ import { Fraunces, Outfit } from "next/font/google";
 import { Footer } from "@/components/layout/Footer";
 import { Navbar } from "@/components/layout/Navbar";
 import { Providers } from "@/components/providers";
-import { getContactSettings } from "@/services/contact.service";
+import { apiSafe } from "@/lib/api";
+import type { ContactSettings } from "@/types/contact";
 import "./globals.css";
 
 const outfit = Outfit({
@@ -22,12 +23,7 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
-  let contact = null;
-  try {
-    contact = await getContactSettings();
-  } catch {
-    contact = null;
-  }
+  const contact = await apiSafe<ContactSettings | null>("/content/contact", null);
 
   return (
     <html
@@ -38,7 +34,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         <Providers>
           <Navbar />
           <main className="flex-1">{children}</main>
-          <Footer contact={contact} />
+          <Footer contact={contact.data} />
         </Providers>
       </body>
     </html>

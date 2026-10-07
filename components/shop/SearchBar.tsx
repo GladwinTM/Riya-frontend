@@ -1,30 +1,31 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { SEARCH_DEBOUNCE_MS } from "@/lib/constants";
 import { Input } from "@/components/ui/input";
 
-export function SearchBar() {
-  const searchParams = useSearchParams();
+export function SearchBar({ initial = "" }: { initial?: string }) {
   const router = useRouter();
-  const current = searchParams.get("search") ?? "";
-  const [value, setValue] = useState(current);
-  const skip = useRef(true);
+  const [value, setValue] = useState(initial);
+  const skipFirst = useRef(true);
 
   useEffect(() => {
-    if (skip.current) {
-      skip.current = false;
+    if (skipFirst.current) {
+      skipFirst.current = false;
       return;
     }
+
     const handle = window.setTimeout(() => {
       const next = new URLSearchParams(window.location.search);
-      if (value.trim()) next.set("search", value.trim());
+      const trimmed = value.trim();
+      if (trimmed) next.set("search", trimmed);
       else next.delete("search");
       next.delete("page");
       const query = next.toString();
       router.replace(query ? `/shop?${query}` : "/shop");
     }, SEARCH_DEBOUNCE_MS);
+
     return () => window.clearTimeout(handle);
   }, [value, router]);
 
